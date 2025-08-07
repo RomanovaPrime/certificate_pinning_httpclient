@@ -171,7 +171,7 @@ class CertificatePinningHttpClient implements HttpClient {
   static const String _tag = "CertificatePinningHttpClient";
 
   // list of SPKI hashes
-  final Set<String> _validPins;
+  Set<String> _validPins;
 
   // internal HttpClient delegate, will be rebuilt if pinning fails (or pins change). It is not set to a pinned
   // HttpClient initially, but this is just used to hold any state updates that might occur before a connection
@@ -285,6 +285,13 @@ class CertificatePinningHttpClient implements HttpClient {
   CertificatePinningHttpClient(List<String> spkiHashes)
       : _validPins = spkiHashes.toSet(),
         super();
+
+  void updateSpkiHashes(List<String> spkiHashes) {
+    _validPins = spkiHashes.toSet();
+    _log.d("$_tag: Updated pins to ${_validPins.length} SPKI hashes");
+    // reset the connected host so that the next open operation will create a new pinned HttpClient
+    _connectedHost = null;
+  }
 
   @override
   Future<HttpClientRequest> open(
