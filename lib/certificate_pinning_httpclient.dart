@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -170,7 +171,7 @@ class CertificatePinningHttpClient implements HttpClient {
   static const String _tag = "CertificatePinningHttpClient";
 
   // list of SPKI hashes
-  final Set<String> _validPins;
+  Set<String> _validPins;
 
   // internal HttpClient delegate, will be rebuilt if pinning fails (or pins change). It is not set to a pinned
   // HttpClient initially, but this is just used to hold any state updates that might occur before a connection
@@ -183,6 +184,8 @@ class CertificatePinningHttpClient implements HttpClient {
 
   // indicates whether the HttpClient has been closed by calling close().
   bool _isClosed = false;
+
+  Completer<HttpClient>? _createClientCompleter;
 
   // state required to implement getters and setters required by the HttpClient interface
   Future<bool> Function(Uri url, String scheme, String? realm)? _authenticate;
@@ -227,6 +230,9 @@ class CertificatePinningHttpClient implements HttpClient {
   /// @param url for which to set up pinning
   /// @return the new HTTP client
   Future<HttpClient> _createPinnedHttpClient(Uri url) async {
+    final completer = Completer<HttpClient>();
+    _createClientCompleter = completer;
+
     // construct a new http client
     HttpClient? newHttpClient;
     if (_validPins.isEmpty) {
@@ -267,6 +273,8 @@ class CertificatePinningHttpClient implements HttpClient {
     }
     newHttpClient.badCertificateCallback = _pinningFailureCallback;
 
+    completer.complete(newHttpClient);
+
     // provide the new http client with a pinned security context
     return newHttpClient;
   }
@@ -278,12 +286,23 @@ class CertificatePinningHttpClient implements HttpClient {
       : _validPins = spkiHashes.toSet(),
         super();
 
+  void updateSpkiHashes(List<String> spkiHashes) {
+    _validPins = spkiHashes.toSet();
+    _log.d("$_tag: Updated pins to ${_validPins.length} SPKI hashes");
+    // reset the connected host so that the next open operation will create a new pinned HttpClient
+    _connectedHost = null;
+  }
+
   @override
   Future<HttpClientRequest> open(
       String method, String host, int port, String path) async {
     // if already closed then just delegate
     if (_isClosed) {
       return _delegatePinnedHttpClient.open(method, host, port, path);
+    }
+
+    if (_createClientCompleter != null) {
+      await _createClientCompleter!.future;
     }
 
     // if we have an active connection to a different host we need to tear down the delegate
@@ -304,6 +323,10 @@ class CertificatePinningHttpClient implements HttpClient {
     // if already closed then just delegate
     if (_isClosed) {
       return _delegatePinnedHttpClient.openUrl(method, url);
+    }
+
+    if (_createClientCompleter != null) {
+      await _createClientCompleter!.future;
     }
 
     // if we have an active connection to a different host we need to tear down the delegate
