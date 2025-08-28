@@ -27,7 +27,6 @@ class _CertificatePinningService {
   /// @return a list of certificates (each as a Uint8list) for the host specified in the URL, null if an error occurred,
   /// or an empty list if no suitable certificates are available.
   static Future<List<Uint8List>?> _getHostCertificates(Uri url) async {
-    if (_hostCertificates[url.host] == null) {
       try {
         final arguments = <String, String>{
           "url": url.toString(),
@@ -45,7 +44,6 @@ class _CertificatePinningService {
         _log.d("$_tag: Error when fetching host certificates: $err");
         // do not throw an exception, but let the function return null
       }
-    }
     return _hostCertificates[url.host];
   }
 
@@ -305,14 +303,10 @@ class CertificatePinningHttpClient implements HttpClient {
       await _createClientCompleter!.future;
     }
 
-    // if we have an active connection to a different host we need to tear down the delegate
-    // pinned HttpClient and create a new one with the correct pinning
-    if (_connectedHost != host) {
       final url = Uri(scheme: "https", host: host, port: port, path: path);
       final httpClient = await _createPinnedHttpClient(url);
       _delegatePinnedHttpClient.close();
       _delegatePinnedHttpClient = httpClient;
-    }
 
     // delegate the open operation to the pinned http client
     return _delegatePinnedHttpClient.open(method, host, port, path);
@@ -329,13 +323,10 @@ class CertificatePinningHttpClient implements HttpClient {
       await _createClientCompleter!.future;
     }
 
-    // if we have an active connection to a different host we need to tear down the delegate
-    // pinned HttpClient and create a new one with the correct pinning
-    if (_connectedHost != url.host) {
       final httpClient = await _createPinnedHttpClient(url);
       _delegatePinnedHttpClient.close();
       _delegatePinnedHttpClient = httpClient;
-    }
+ 
 
     // delegate the open operation to the pinned http client
     return _delegatePinnedHttpClient.openUrl(method, url);
